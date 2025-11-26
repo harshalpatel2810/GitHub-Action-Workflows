@@ -58,6 +58,7 @@ jobs:
           docker build -t ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:${{ env.VERSION }} -f ${{ env.DOCKERFILE_PATH}} .
           docker push ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:${{ env.VERSION }}
           echo "{\"action\":\"INSERT\",\"digest\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}@$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:latest | awk -F'@' '{print $2}')"\",\"tag\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:latest"\"}" > ${{ env.MESSAGE_JSON_FR_APP1 }}
+          
       - name: Publish message to Pub/Sub for Application 1
         if: contains(github.event.head_commit.message, '[APP1]') || (!contains(github.event.head_commit.message, '[APP1]') && !contains(github.event.head_commit.message, '[APP2]'))
         run: |
@@ -79,6 +80,7 @@ jobs:
           docker build -t ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:${{ env.VERSION }} -f ${{ env.DOCKERFILE_PATH}} .
           docker push ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:${{ env.VERSION }}
           echo "{\"action\":\"INSERT\",\"digest\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}@$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:latest | awk -F'@' '{print $2}')"\",\"tag\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:latest"\"}" > ${{ env.MESSAGE_JSON_FR_APP2 }}
+          
       - name: Publish message to Pub/Sub for Application 2
         if: contains(github.event.head_commit.message, '[APP2]') || (!contains(github.event.head_commit.message, '[APP2]') && !contains(github.event.head_commit.message, '[APP1]'))
         run: |
