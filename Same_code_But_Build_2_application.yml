@@ -1,0 +1,89 @@
+name: Testing for two Application
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '.github/workflows/**'
+
+env:
+  HARBOR_IMAGE_NAME_APP1: infra/app1
+  HARBOR_IMAGE_NAME_APP2: infra/app2
+  VERSION: latest
+  DOCKERFILE_PATH: ./Dockerfile
+  HARBOR_REGISTRY_FR: fr-harbor.dynamic1001.com
+  HARBOR_USERNAME_FR: ${{ secrets.CONTAINER_REGISTRY_HARBOR_FR_INFRA_USERNAME }}
+  HARBOR_PASSWORD_FR: ${{ secrets.CONTAINER_REGISTRY_HARBOR_FR_INFRA_PASSWORD }}
+  MESSAGE_JSON_FR_APP1: app1.json
+  MESSAGE_JSON_FR_APP2: app2.json
+
+jobs:
+  build-docker-image:
+    runs-on: buildenv-4c5r
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.CONTAINER_REGISTRY_GCR_HC }}'
+
+      - name: Set up Google Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          version: '>= 363.0.0'
+          project_id: mtpo-prod    
+
+      - name: Login to FR Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.HARBOR_REGISTRY_FR }}
+          username: ${{ env.HARBOR_USERNAME_FR }}
+          password: ${{ env.HARBOR_PASSWORD_FR }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Application 1
+        if: |
+          contains(github.event.head_commit.message, '[APP1]') ||
+          (
+            !contains(github.event.head_commit.message, '[APP1]') &&
+            !contains(github.event.head_commit.message, '[APP2]')
+          )
+        run: |
+          echo "=== Building APP1 ==="
+          docker build -t ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:${{ env.VERSION }} -f ${{ env.DOCKERFILE_PATH}} .
+          docker push ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:${{ env.VERSION }}
+          echo "{\"action\":\"INSERT\",\"digest\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}@$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:latest | awk -F'@' '{print $2}')"\",\"tag\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP1 }}:latest"\"}" > ${{ env.MESSAGE_JSON_FR_APP1 }}
+      - name: Publish message to Pub/Sub for Application 1
+        if: contains(github.event.head_commit.message, '[APP1]') || (!contains(github.event.head_commit.message, '[APP1]') && !contains(github.event.head_commit.message, '[APP2]'))
+        run: |
+          MESSAGE_ID=$(gcloud pubsub topics publish gcr --message "$(cat ${{ env.MESSAGE_JSON_FR_APP1 }})" --format="get(messageIds)")
+          echo "MESSAGE_ID=$MESSAGE_ID" > message.txt
+          cat ${{ env.MESSAGE_JSON_FR_APP1 }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.CONTAINER_REGISTRY_GCR_HC }}
+
+      - name: Build Application 2
+        if: |
+          contains(github.event.head_commit.message, '[APP2]') ||
+          (
+            !contains(github.event.head_commit.message, '[APP2]') &&
+            !contains(github.event.head_commit.message, '[APP1]')
+          )      
+        run: |
+          echo "=== Building APP2 ==="
+          docker build -t ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:${{ env.VERSION }} -f ${{ env.DOCKERFILE_PATH}} .
+          docker push ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:${{ env.VERSION }}
+          echo "{\"action\":\"INSERT\",\"digest\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}@$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:latest | awk -F'@' '{print $2}')"\",\"tag\":\""${{ env.HARBOR_REGISTRY_FR }}/${{ env.HARBOR_IMAGE_NAME_APP2 }}:latest"\"}" > ${{ env.MESSAGE_JSON_FR_APP2 }}
+      - name: Publish message to Pub/Sub for Application 2
+        if: contains(github.event.head_commit.message, '[APP2]') || (!contains(github.event.head_commit.message, '[APP2]') && !contains(github.event.head_commit.message, '[APP1]'))
+        run: |
+          MESSAGE_ID=$(gcloud pubsub topics publish gcr --message "$(cat ${{ env.MESSAGE_JSON_FR_APP2 }})" --format="get(messageIds)")
+          echo "MESSAGE_ID=$MESSAGE_ID" > message.txt
+          cat ${{ env.MESSAGE_JSON_FR_APP2 }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.CONTAINER_REGISTRY_GCR_HC }}
